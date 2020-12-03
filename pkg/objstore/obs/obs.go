@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	huaweiobs "github.com/thanos-io/thanos/huawei/huaweicloud-obs-sdk-go/src/obs"
+
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -24,10 +26,14 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+var ak = "*** Provide your Access Key ***"
+var sk = "*** Provide your Secret Key ***"
+var endpoint = "https://yourdomainname"
+
 // Part size for multi part upload.
 const PartSize = 1024 * 1024 * 128
 
-// Config stores the configuration for oss bucket.
+// Config stores the configuration for obs bucket.
 type Config struct {
 	Endpoint        string `yaml:"endpoint"`
 	Bucket          string `yaml:"bucket"`
@@ -39,30 +45,30 @@ type Config struct {
 type Bucket struct {
 	name   string
 	logger log.Logger
-	client *alioss.Client
+	client *huaweiobs.ObsClient
 	config Config
-	bucket *alioss.Bucket
+	bucket *huaweiobs.Bucket
 }
 
 func NewTestBucket(t testing.TB) (objstore.Bucket, func(), error) {
-	c := Config{
-		Endpoint:        os.Getenv("ALIYUNOSS_ENDPOINT"),
-		Bucket:          os.Getenv("ALIYUNOSS_BUCKET"),
-		AccessKeyID:     os.Getenv("ALIYUNOSS_ACCESS_KEY_ID"),
-		AccessKeySecret: os.Getenv("ALIYUNOSS_ACCESS_KEY_SECRET"),
+	conf := Config{
+		Endpoint:        os.Getenv("HUAWEIOBS_ENDPOINT"),
+		Bucket:          os.Getenv("HUAWEIOBS_BUCKET"),
+		AccessKeyID:     os.Getenv("HUAWEIOBS_ACCESS_KEY_ID"),
+		AccessKeySecret: os.Getenv("HUAWEIOBS_ACCESS_KEY_SECRET"),
 	}
 
-	if c.Endpoint == "" || c.AccessKeyID == "" || c.AccessKeySecret == "" {
-		return nil, nil, errors.New("aliyun oss endpoint or access_key_id or access_key_secret " +
+	if conf.Endpoint == "" || conf.AccessKeyID == "" || conf.AccessKeySecret == "" {
+		return nil, nil, errors.New("huawei obs endpoint or access_key_id or access_key_secret " +
 			"is not present in config file")
 	}
-	if c.Bucket != "" && os.Getenv("THANOS_ALLOW_EXISTING_BUCKET_USE") == "true" {
-		t.Log("ALIYUNOSS_BUCKET is defined. Normally this tests will create temporary bucket " +
-			"and delete it after test. Unset ALIYUNOSS_BUCKET env variable to use default logic. If you really want to run " +
+	if conf.Bucket != "" && os.Getenv("THANOS_ALLOW_EXISTING_BUCKET_USE") == "true" {
+		t.Log("HUAWEIOBS_BUCKET_BUCKET is defined. Normally this tests will create temporary bucket " +
+			"and delete it after test. Unset HUAWEIOBS_BUCKET env variable to use default logic. If you really want to run " +
 			"tests against provided (NOT USED!) bucket, set THANOS_ALLOW_EXISTING_BUCKET_USE=true.")
-		return NewTestBucketFromConfig(t, c, true)
+		return NewTestBucketFromConfig(t, conf, true)
 	}
-	return NewTestBucketFromConfig(t, c, false)
+	return NewTestBucketFromConfig(t, conf, false)
 }
 
 // Upload the contents of the reader as an object into the bucket.
@@ -132,7 +138,7 @@ func (b *Bucket) Delete(ctx context.Context, name string) error {
 
 // Attributes returns information about the specified object.
 func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	m, err := b.bucket.GetObjectMeta(name)
+	m, err := b.client.GetObjectMetadata(name)
 	if err != nil {
 		return objstore.ObjectAttributes{}, err
 	}
